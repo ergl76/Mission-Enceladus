@@ -106,23 +106,32 @@ class GameState:
         Counts symbols for assigned cards and checks for success.
         Returns: (duty_success, crisis_success, duty_provided, crisis_provided)
         """
-        # Count provided symbols for Duty Task
-        duty_provided = defaultdict(int)
-        for card in self.assigned_to_duty:
-            if hasattr(card, 'symbol'):
-                duty_provided[card.symbol] += 1
         
-        # Count provided symbols for Crisis Task
-        crisis_provided = defaultdict(int)
-        for card in self.assigned_to_crisis:
-            if hasattr(card, 'symbol'):
-                crisis_provided[card.symbol] += 1
-                
+        def count_symbols(cards: List[ActionCard]) -> Dict[str, int]:
+            """Counts provided symbols, handling Joker cards."""
+            provided = defaultdict(int)
+            jokers = 0
+            for card in cards:
+                if isinstance(card, JokerCard):
+                    jokers += 1
+                elif hasattr(card, 'symbol'):
+                    provided[card.symbol] += 1
+            
+            # Simple Joker logic for now: add one of each symbol type per joker
+            # This is a placeholder for a "player chooses" mechanic.
+            if jokers > 0:
+                for symbol_type in [constants.NAVIGATION, constants.REPAIR, constants.RESEARCH, constants.LIFE_SUPPORT]:
+                    provided[symbol_type] += jokers
+            return dict(provided)
+
+        duty_provided = count_symbols(self.assigned_to_duty)
+        crisis_provided = count_symbols(self.assigned_to_crisis)
+        
         # Check success for Duty Task
         duty_success = True
         if self.current_duty_task:
             for symbol, required in self.current_duty_task.requirements.items():
-                if duty_provided[symbol] < required:
+                if duty_provided.get(symbol, 0) < required:
                     duty_success = False
                     break
         
@@ -130,11 +139,14 @@ class GameState:
         crisis_success = True
         if self.current_crisis:
             for symbol, required in self.current_crisis.requirements.items():
-                if crisis_provided[symbol] < required:
+                if crisis_provided.get(symbol, 0) < required:
                     crisis_success = False
                     break
-                    
-        return duty_success, crisis_success, dict(duty_provided), dict(crisis_provided)
+        else:
+            # If there's no crisis, it cannot be failed. But if cards were assigned, it's a success.
+            crisis_success = len(self.assigned_to_crisis) > 0
+
+        return duty_success, crisis_success, duty_provided, crisis_provided
 
     def apply_consequences(self, duty_success: bool, crisis_success: bool):
         """Applies penalties and rewards based on task resolution."""
@@ -145,12 +157,17 @@ class GameState:
         else:
             print("Duty Task SUCCESSFUL!")
             
-        if not crisis_success:
-            self.fuel -= 1 # Placeholder penalty
-            print("Crisis FAILED! -1 Fuel.")
-        else:
-            self.fuel += 1 # Placeholder reward
-            print("Crisis SUCCESSFUL! +1 Fuel.")
+        # Only apply crisis consequences if a crisis existed
+        if self.current_crisis:
+            if not crisis_success:
+                self.fuel -= 1 # Placeholder penalty
+                print("Crisis FAILED! -1 Fuel.")
+            else:
+                self.fuel += 1 # Placeholder reward
+                print("Crisis SUCCESSFUL! +1 Fuel.")
+        elif crisis_success: # Cards assigned to a non-crisis
+            print("Crisis slot used without a crisis. No effect.")
+
 
     def prepare_next_round(self):
         """Cleans up the completed round and prepares for the next one."""

@@ -9,6 +9,8 @@ from typing import Dict, List, Optional
 from src.game.game_state import GameState, AKTIONSPHASE, AUFLOESUNGSPHASE, VORBEREITUNGSPHASE
 from src.core.player import Player
 from src.ui.animation import ResolutionAnimation
+# KORREKTUR: Fehlender Import für die JokerCard-Klasse hinzugefügt.
+from src.core.cards import JokerCard
 
 # --- Pygame Setup ---
 pygame.init()
@@ -86,9 +88,10 @@ def draw_tasks(surface, game_state: GameState, interactive: bool) -> Dict[str, p
     draw_text(surface, "AKTUELLE KRISE", (crisis_rect.x + 20, crisis_rect.y + 10))
     if game_state.current_crisis:
         draw_text(surface, game_state.current_crisis.name, (crisis_rect.x + 20, crisis_rect.y + 50))
-        # KORREKTUR: Hinzufügen der Anforderungs-Anzeige
         req_text = ", ".join([f"{v} {k[:4]}" for k, v in game_state.current_crisis.requirements.items()])
         draw_text(surface, f"Anforderungen: {req_text}", (crisis_rect.x + 20, crisis_rect.y + 90), f=small_font)
+    else:
+        draw_text(surface, "Keine aktive Krise", (crisis_rect.x + 20, crisis_rect.y + 50))
     task_rects["crisis"] = crisis_rect
     
     # Duty Slot
@@ -100,7 +103,6 @@ def draw_tasks(surface, game_state: GameState, interactive: bool) -> Dict[str, p
     draw_text(surface, "PFLICHTAUFGABE", (duty_rect.x + 20, duty_rect.y + 10))
     if game_state.current_duty_task:
         draw_text(surface, game_state.current_duty_task.name, (duty_rect.x + 20, duty_rect.y + 50))
-        # KORREKTUR: Hinzufügen der Anforderungs-Anzeige
         req_text = ", ".join([f"{v} {k[:4]}" for k, v in game_state.current_duty_task.requirements.items()])
         draw_text(surface, f"Anforderungen: {req_text}", (duty_rect.x + 20, duty_rect.y + 90), f=small_font)
     task_rects["duty"] = duty_rect
@@ -134,6 +136,8 @@ def draw_player_hand(surface, player_to_show: Player, is_active_player: bool, ga
         draw_text(surface, card.name, (card_rect.x + 10, card_rect.y + 10), f=small_font)
         if hasattr(card, 'symbol'):
              draw_text(surface, card.symbol, (card_rect.x + 10, card_rect.y + 40))
+        if isinstance(card, JokerCard):
+             draw_text(surface, "JOKER", (card_rect.x + 10, card_rect.y + 40))
              
     return card_rects if is_active_player else []
 
@@ -143,7 +147,6 @@ def draw_confirm_button(surface, interactive: bool) -> pygame.Rect:
     button_color = COLOR_BUTTON_HOVER if is_hovered else COLOR_BUTTON
     
     pygame.draw.rect(surface, button_color, button_rect)
-    # KORREKTUR: Der Positionsparameter 'pos' ist jetzt der Mittelpunkt des Buttons.
     draw_text(surface, "Aktionen bestätigen", button_rect.center, f=small_font, center=True)
     return button_rect
 
@@ -164,77 +167,64 @@ def main():
             if event.type == pygame.QUIT:
                 running = False
             
-            # MOUSE UP: For Team-Cockpit view
-            if event.type == pygame.MOUSEBUTTONUP:
-                if event.button == 1:
-                    viewing_player = None
+            if event.type == pygame.MOUSEBUTTONUP and event.button == 1:
+                viewing_player = None
 
-            # MOUSE DOWN: For interactions
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                if event.button == 1:
-                    # Team-Cockpit Logic: Hold to view other hands
-                    for i, rect in enumerate(portrait_rects):
-                        if rect.collidepoint(mouse_pos) and i != game_state.active_player_index:
-                            viewing_player = game_state.players[i]
-                            break
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                for i, rect in enumerate(portrait_rects):
+                    if rect.collidepoint(mouse_pos) and i != game_state.active_player_index:
+                        viewing_player = game_state.players[i]
+                
+                if game_state.current_phase == AKTIONSPHASE:
+                    for i, rect in enumerate(card_rects):
+                        if rect.collidepoint(mouse_pos):
+                            game_state.select_card(i, active_player)
                     
-                    if game_state.current_phase == AKTIONSPHASE:
-                        # Card Selection
-                        for i, rect in enumerate(card_rects):
-                            if rect.collidepoint(mouse_pos):
-                                game_state.select_card(i, active_player)
-                                break
+                    if game_state.selected_card_obj:
+                        if task_rects["crisis"].collidepoint(mouse_pos):
+                            game_state.assign_selected_card_to_task("crisis", active_player)
+                        elif task_rects["duty"].collidepoint(mouse_pos):
+                            game_state.assign_selected_card_to_task("duty", active_player)
+                            
+                    if confirm_button_rect.collidepoint(mouse_pos):
+                        game_state.start_resolution_phase()
+                        duty_success, crisis_success, duty_provided, crisis_provided = game_state.resolve_tasks()
+                        game_state.apply_consequences(duty_success, crisis_success)
                         
-                        # Card Assignment
-                        if game_state.selected_card_obj:
-                            if task_rects["crisis"].collidepoint(mouse_pos):
-                                game_state.assign_selected_card_to_task("crisis", active_player)
-                            elif task_rects["duty"].collidepoint(mouse_pos):
-                                game_state.assign_selected_card_to_task("duty", active_player)
-                                
-                        # Confirm Button
-                        if confirm_button_rect.collidepoint(mouse_pos):
-                            game_state.start_resolution_phase()
-                            duty_success, crisis_success, duty_provided, crisis_provided = game_state.resolve_tasks()
-                            game_state.apply_consequences(duty_success, crisis_success)
-                            resolution_anim = ResolutionAnimation(
-                                duty_success, crisis_success,
-                                duty_provided, crisis_provided,
-                                game_state.current_duty_task.requirements,
-                                game_state.current_crisis.requirements
-                            )
+                        crisis_reqs = game_state.current_crisis.requirements if game_state.current_crisis else {}
+                        
+                        resolution_anim = ResolutionAnimation(
+                            duty_success, crisis_success,
+                            duty_provided, crisis_provided,
+                            game_state.current_duty_task.requirements,
+                            crisis_reqs
+                        )
 
-        # --- Game Logic Update (State Machine) ---
+        # --- Game Logic Update ---
         if game_state.current_phase == AUFLOESUNGSPHASE and resolution_anim:
             resolution_anim.update(dt)
             if resolution_anim.is_finished:
                 resolution_anim = None
                 game_state.current_phase = VORBEREITUNGSPHASE
-                game_state.prepare_next_round() # This will ultimately set phase to AKTIONSPHASE
+                game_state.prepare_next_round()
                 active_player = game_state.players[game_state.active_player_index]
 
         # --- Drawing ---
         screen.fill(COLOR_BACKGROUND)
-        
         portrait_rects = draw_status_bar(screen, game_state)
-        
         interactive_ui = game_state.current_phase == AKTIONSPHASE
         task_rects = draw_tasks(screen, game_state, interactive_ui)
-        
         player_to_show = viewing_player if viewing_player else active_player
         is_active_player_view = viewing_player is None
         card_rects = draw_player_hand(screen, player_to_show, is_active_player_view, game_state)
-        
         confirm_button_rect = draw_confirm_button(screen, interactive_ui)
 
-        # Draw animation overlay if it's running
         if resolution_anim:
             resolution_anim.draw(screen)
             
         # --- Cursor Update ---
         interactive_rects = card_rects + list(task_rects.values()) + portrait_rects + [confirm_button_rect]
         is_over_interactive = any(rect.collidepoint(mouse_pos) for rect in interactive_rects)
-        
         if is_over_interactive and game_state.current_phase == AKTIONSPHASE:
             pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND)
         else:
