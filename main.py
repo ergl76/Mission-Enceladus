@@ -39,6 +39,10 @@ COLOR_BAR_INTEGRITY = (180, 0, 0)
 COLOR_CARD = (50, 80, 120)
 COLOR_CARD_SELECTED = (255, 200, 0)
 
+# KORREKTUR: Globale Variable für die Raketenanimation
+rocket_current_y = 0
+rocket_target_y = 0
+
 def draw_text(surface, text, pos, color=COLOR_WHITE, f=font, center=False):
     text_surface = f.render(text, True, color)
     text_rect = text_surface.get_rect(center=pos) if center else text_surface.get_rect(topleft=pos)
@@ -68,12 +72,10 @@ def draw_game_over_screen(surface, game_state: GameState) -> Tuple[pygame.Rect, 
     surface.blit(overlay, (0,0))
     draw_text(surface, "MISSION GESCHEITERT", (SCREEN_WIDTH/2, 150), center=True, f=big_font, color=COLOR_RED)
     
-    # Stats
     draw_text(surface, f"Reisedauer: {game_state.round_counter} Runden", (SCREEN_WIDTH/2, 250), center=True)
     draw_text(surface, f"Gemeisterte Herausforderungen: {game_state.challenges_completed_counter}", (SCREEN_WIDTH/2, 300), center=True)
     draw_text(surface, f"Weiteste Etappe: {game_state.mission_progress} / 10", (SCREEN_WIDTH/2, 350), center=True)
     
-    # Buttons
     new_mission_rect = pygame.Rect(SCREEN_WIDTH/2 - 350, 500, 300, 70)
     pygame.draw.rect(surface, COLOR_GREEN, new_mission_rect, border_radius=10)
     draw_text(surface, "Neue Mission starten", new_mission_rect.center, center=True)
@@ -84,16 +86,44 @@ def draw_game_over_screen(surface, game_state: GameState) -> Tuple[pygame.Rect, 
     
     return new_mission_rect, exit_rect
 
-def draw_travel_map(surface, progress: int):
-    map_rect = pygame.Rect(20, 120, 60, SCREEN_HEIGHT - 240)
-    pygame.draw.rect(surface, (0,0,0), map_rect, border_radius=5)
-    rocket_y = map_rect.bottom - (progress * (map_rect.height / 10)) - 15
-    draw_text(surface, "🚀", (map_rect.centerx, rocket_y), f=big_font, center=True)
+def draw_travel_map(surface, progress: int, total_steps: int = 10):
+    """Draws the vertical mission progress bar with start/end points and animation."""
+    global rocket_current_y, rocket_target_y
+    
+    # KORREKTUR: Leiste deckt nun den gesamten linken Bildschirmrand ab.
+    margin = 20
+    map_rect = pygame.Rect(margin, margin, 80, SCREEN_HEIGHT - (2 * margin))
+    pygame.draw.rect(surface, (0, 0, 0, 180), map_rect, border_radius=10)
+
+    # Start- und Endpunkte
+    start_pos_y = map_rect.bottom - 40
+    end_pos_y = map_rect.top + 40
+    draw_text(surface, "🌍", (map_rect.centerx, start_pos_y), f=big_font, center=True) # Erde
+    draw_text(surface, "🪐", (map_rect.centerx, end_pos_y), f=big_font, center=True) # Enceladus/Saturn
+
+    # Wegpunkte
+    path_height = start_pos_y - end_pos_y
+    for i in range(1, total_steps):
+        y = start_pos_y - (i * path_height / total_steps)
+        pygame.draw.line(surface, COLOR_GREY, (map_rect.centerx - 10, y), (map_rect.centerx + 10, y), 2)
+
+    # Raketen-Logik
+    target_y = start_pos_y - (progress * path_height / total_steps)
+    rocket_target_y = target_y # Update des globalen Ziels
+    
+    # Animations-Update
+    if rocket_current_y != rocket_target_y:
+        # Simple "Lerp" (Linear Interpolation) für eine weiche Bewegung
+        rocket_current_y += (rocket_target_y - rocket_current_y) * 0.05 
+        if abs(rocket_current_y - rocket_target_y) < 1:
+            rocket_current_y = rocket_target_y
+
+    draw_text(surface, "🚀", (map_rect.centerx, rocket_current_y), f=big_font, center=True)
+
 
 def draw_status_bar(surface, game_state: GameState) -> List[pygame.Rect]:
     pygame.draw.rect(surface, COLOR_STATUS_ZONE, (0, 0, SCREEN_WIDTH, 100))
     portrait_rects = []
-    # Resource bars...
     draw_text(surface, f"Fuel: {game_state.fuel}", (120, 20))
     pygame.draw.rect(surface, (0,0,0), (120, 50, 200, 30), 2)
     pygame.draw.rect(surface, COLOR_BAR_FUEL, (120, 50, game_state.fuel * 20, 30))
@@ -103,7 +133,6 @@ def draw_status_bar(surface, game_state: GameState) -> List[pygame.Rect]:
     draw_text(surface, f"Integrity: {game_state.integrity}", (620, 20))
     pygame.draw.rect(surface, (0,0,0), (620, 50, 200, 30), 2)
     pygame.draw.rect(surface, COLOR_BAR_INTEGRITY, (620, 50, game_state.integrity * 20, 30))
-    # Player Portraits
     for i, player in enumerate(game_state.players):
         rect = pygame.Rect(SCREEN_WIDTH - (len(game_state.players) - i) * 100, 20, 80, 60)
         portrait_rects.append(rect)
@@ -170,48 +199,49 @@ def draw_player_hand_and_ready_button(surface, player: Player, game_state: GameS
     return card_rects, ready_button_rect
 
 def main():
+    global rocket_current_y, rocket_target_y
     game_state = GameState()
     resolution_anim = None
-    
-    # Rect dictionaries that are updated each frame
-    char_rects, start_button_rect = [], None
-    portrait_rects, task_rects, card_rects, ready_button_rect = [], {}, [], None
+    interactive_rects = {}
 
     while True:
-        dt = clock.tick(60) / 1000.0
         mouse_pos = pygame.mouse.get_pos()
         
         for event in pygame.event.get():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if game_state.current_phase == SETUP_SCREEN:
-                    for i, rect in enumerate(char_rects):
-                        if rect.collidepoint(mouse_pos):
-                            if i in game_state.selected_character_indices: game_state.selected_character_indices.remove(i)
-                            else: game_state.selected_character_indices.add(i)
-                    if start_button_rect and start_button_rect.collidepoint(mouse_pos) and 1 <= len(game_state.selected_character_indices) <= 4:
+                    if interactive_rects.get('start_button') and interactive_rects['start_button'].collidepoint(mouse_pos) and 1 <= len(game_state.selected_character_indices) <= 4:
                         game_state.start_game()
+                        # Initialisiere Raketenposition bei Spielstart
+                        map_rect = pygame.Rect(20, 20, 80, SCREEN_HEIGHT - 40)
+                        start_y = map_rect.bottom - 40
+                        rocket_current_y = start_y
+                        rocket_target_y = start_y
+                    else:
+                        for i, rect in enumerate(interactive_rects.get('char_rects', [])):
+                            if rect.collidepoint(mouse_pos):
+                                if i in game_state.selected_character_indices: game_state.selected_character_indices.remove(i)
+                                else: game_state.selected_character_indices.add(i)
                 elif game_state.current_phase == AKTIONSPHASE:
-                    for i, rect in enumerate(portrait_rects):
+                    for i, rect in enumerate(interactive_rects.get('portrait_rects', [])):
                         if rect.collidepoint(mouse_pos):
                             game_state.active_character = game_state.players[i]
                             game_state.selected_card_index = None
                             game_state.selected_card_obj = None
-                    for i, rect in enumerate(card_rects):
+                    for i, rect in enumerate(interactive_rects.get('card_rects', [])):
                         if rect.collidepoint(mouse_pos): game_state.select_card(i, game_state.active_character)
                     if game_state.selected_card_obj:
-                        # KORREKTUR: Greift auf das task_rects Dictionary zu, das von draw_tasks zurückgegeben wird
-                        if task_rects["challenge"].collidepoint(mouse_pos):
+                        if interactive_rects.get('task_rects', {}).get('challenge').collidepoint(mouse_pos):
                             game_state.assign_selected_card_to_task("challenge", game_state.active_character)
-                        elif task_rects["duty"].collidepoint(mouse_pos):
+                        elif interactive_rects.get('task_rects', {}).get('duty').collidepoint(mouse_pos):
                             game_state.assign_selected_card_to_task("duty", game_state.active_character)
-                    if ready_button_rect and ready_button_rect.collidepoint(mouse_pos):
+                    if interactive_rects.get('ready_button') and interactive_rects['ready_button'].collidepoint(mouse_pos):
                         game_state.active_character.is_ready = not game_state.active_character.is_ready
                 elif game_state.current_phase == GAME_OVER:
-                    new_mission_button, exit_button = draw_game_over_screen(screen, game_state) # Neu zeichnen für rects
-                    if new_mission_button.collidepoint(mouse_pos):
-                        game_state = GameState() # Reset the game
-                    if exit_button.collidepoint(mouse_pos):
+                    if interactive_rects.get('new_mission_button').collidepoint(mouse_pos):
+                        game_state = GameState()
+                    if interactive_rects.get('exit_button').collidepoint(mouse_pos):
                         pygame.quit(); sys.exit()
         
         if game_state.current_phase == AKTIONSPHASE and game_state.check_if_all_players_ready():
@@ -222,7 +252,7 @@ def main():
             resolution_anim = ResolutionAnimation(duty_success, challenge_success, duty_provided, challenge_provided, game_state.current_duty_task.requirements, challenge_reqs)
             
         if game_state.current_phase == AUFLOESUNGSPHASE and resolution_anim:
-            resolution_anim.update(dt)
+            resolution_anim.update(0.016)
             if resolution_anim.is_finished:
                 resolution_anim = None
                 game_state.current_phase = VORBEREITUNGSPHASE
@@ -231,30 +261,27 @@ def main():
         screen.fill(COLOR_BACKGROUND)
         if game_state.current_phase == SETUP_SCREEN:
             char_rects, start_button_rect = draw_setup_screen(screen, game_state.selected_character_indices)
+            interactive_rects = {'char_rects': char_rects, 'start_button': start_button_rect}
         elif game_state.current_phase == GAME_OVER:
-            draw_game_over_screen(screen, game_state)
+            new_mission_button, exit_button = draw_game_over_screen(screen, game_state)
+            interactive_rects = {'new_mission_button': new_mission_button, 'exit_button': exit_button}
         else:
             draw_travel_map(screen, game_state.mission_progress)
             portrait_rects = draw_status_bar(screen, game_state)
             task_rects = draw_tasks(screen, game_state)
             card_rects, ready_button_rect = draw_player_hand_and_ready_button(screen, game_state.active_character, game_state)
+            interactive_rects = {'portrait_rects': portrait_rects, 'task_rects': list(task_rects.values()), 'card_rects': card_rects, 'ready_button': ready_button_rect}
             if resolution_anim: resolution_anim.draw(screen)
 
-        # Build list of all interactive rects for cursor change
         all_interactive_rects = []
-        if game_state.current_phase == SETUP_SCREEN:
-            all_interactive_rects.extend(char_rects)
-            all_interactive_rects.append(start_button_rect)
-        elif game_state.current_phase == AKTIONSPHASE:
-            all_interactive_rects.extend(portrait_rects)
-            all_interactive_rects.extend(task_rects.values())
-            all_interactive_rects.extend(card_rects)
-            all_interactive_rects.append(ready_button_rect)
-
+        for group in interactive_rects.values():
+            if isinstance(group, list): all_interactive_rects.extend(group)
+            elif group: all_interactive_rects.append(group)
         is_over_interactive = any(rect and rect.collidepoint(mouse_pos) for rect in all_interactive_rects)
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND if is_over_interactive else pygame.SYSTEM_CURSOR_ARROW)
         
         pygame.display.flip()
+        clock.tick(60)
 
 if __name__ == "__main__":
     main()
