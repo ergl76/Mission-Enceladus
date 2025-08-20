@@ -93,7 +93,17 @@ def draw_travel_map(surface, progress: int):
 def draw_status_bar(surface, game_state: GameState) -> List[pygame.Rect]:
     pygame.draw.rect(surface, COLOR_STATUS_ZONE, (0, 0, SCREEN_WIDTH, 100))
     portrait_rects = []
-    # Resource bars... (unchanged)
+    # Resource bars...
+    draw_text(surface, f"Fuel: {game_state.fuel}", (120, 20))
+    pygame.draw.rect(surface, (0,0,0), (120, 50, 200, 30), 2)
+    pygame.draw.rect(surface, COLOR_BAR_FUEL, (120, 50, game_state.fuel * 20, 30))
+    draw_text(surface, f"Oxygen: {game_state.oxygen}", (370, 20))
+    pygame.draw.rect(surface, (0,0,0), (370, 50, 200, 30), 2)
+    pygame.draw.rect(surface, COLOR_BAR_OXYGEN, (370, 50, game_state.oxygen * 20, 30))
+    draw_text(surface, f"Integrity: {game_state.integrity}", (620, 20))
+    pygame.draw.rect(surface, (0,0,0), (620, 50, 200, 30), 2)
+    pygame.draw.rect(surface, COLOR_BAR_INTEGRITY, (620, 50, game_state.integrity * 20, 30))
+    # Player Portraits
     for i, player in enumerate(game_state.players):
         rect = pygame.Rect(SCREEN_WIDTH - (len(game_state.players) - i) * 100, 20, 80, 60)
         portrait_rects.append(rect)
@@ -107,13 +117,38 @@ def draw_status_bar(surface, game_state: GameState) -> List[pygame.Rect]:
     return portrait_rects
 
 def draw_tasks(surface, game_state: GameState) -> Dict[str, pygame.Rect]:
-    # ... (unchanged)
-    return {"challenge": pygame.Rect(120, 120, 500, 260), "duty": pygame.Rect(660, 120, 500, 260)}
+    pygame.draw.rect(surface, COLOR_FOCUS_ZONE, (100, 100, SCREEN_WIDTH - 120, 300))
+    
+    def draw_single_task(task, assigned_cards, rect):
+        pygame.draw.rect(surface, (15,30,50), rect)
+        pygame.draw.rect(surface, COLOR_WHITE, rect, 2)
+        if not task: return
+        draw_text(surface, task.name, rect.topleft + pygame.Vector2(20, 20))
+        provided = defaultdict(int)
+        jokers = sum(1 for card in assigned_cards if isinstance(card, JokerCard))
+        for card in assigned_cards:
+            if hasattr(card, 'symbol'): provided[card.symbol] += 1
+        if jokers > 0:
+            for symbol_type in constants.__dict__.values():
+                if isinstance(symbol_type, str): provided[symbol_type] += jokers
+        y_offset = 100
+        for symbol, required in task.requirements.items():
+            x_offset = 0
+            draw_text(surface, f"{symbol}:", rect.topleft + pygame.Vector2(20, y_offset))
+            for i in range(required):
+                color = COLOR_GREEN if provided.get(symbol, 0) > i else COLOR_GREY
+                pygame.draw.circle(surface, color, (rect.x + 150 + x_offset, rect.y + y_offset + 10), 10)
+                x_offset += 30
+            y_offset += 40
+            
+    challenge_rect = pygame.Rect(120, 120, 500, 260)
+    duty_rect = pygame.Rect(660, 120, 500, 260)
+    draw_single_task(game_state.current_challenge, game_state.assigned_to_challenge, challenge_rect)
+    draw_single_task(game_state.current_duty_task, game_state.assigned_to_duty, duty_rect)
+    return {"challenge": challenge_rect, "duty": duty_rect}
 
 def draw_player_hand_and_ready_button(surface, player: Player, game_state: GameState) -> Tuple[List[pygame.Rect], pygame.Rect]:
     pygame.draw.rect(surface, COLOR_ACTION_ZONE, (0, 400, SCREEN_WIDTH, SCREEN_HEIGHT - 400))
-    
-    # Hand
     card_rects = []
     start_x = (SCREEN_WIDTH - (len(player.hand) * 170 - 20)) / 2
     for i, card in enumerate(player.hand):
@@ -127,7 +162,6 @@ def draw_player_hand_and_ready_button(surface, player: Player, game_state: GameS
         symbol_text = "JOKER" if isinstance(card, JokerCard) else getattr(card, 'symbol', '')
         draw_text(surface, symbol_text, (card_rect.x + 10, card_rect.y + 40))
         
-    # Ready Button
     ready_button_rect = pygame.Rect(SCREEN_WIDTH - 250, 420, 200, 50)
     button_color = COLOR_GREEN if player.is_ready else COLOR_RED
     pygame.draw.rect(surface, button_color, ready_button_rect, border_radius=10)
@@ -138,7 +172,10 @@ def draw_player_hand_and_ready_button(surface, player: Player, game_state: GameS
 def main():
     game_state = GameState()
     resolution_anim = None
-    interactive_rects = {}
+    
+    # Rect dictionaries that are updated each frame
+    char_rects, start_button_rect = [], None
+    portrait_rects, task_rects, card_rects, ready_button_rect = [], {}, [], None
 
     while True:
         dt = clock.tick(60) / 1000.0
@@ -148,31 +185,33 @@ def main():
             if event.type == pygame.QUIT: pygame.quit(); sys.exit()
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 if game_state.current_phase == SETUP_SCREEN:
-                    for i, rect in enumerate(interactive_rects.get('char_rects', [])):
+                    for i, rect in enumerate(char_rects):
                         if rect.collidepoint(mouse_pos):
                             if i in game_state.selected_character_indices: game_state.selected_character_indices.remove(i)
                             else: game_state.selected_character_indices.add(i)
-                    if interactive_rects.get('start_button') and interactive_rects['start_button'].collidepoint(mouse_pos) and 1 <= len(game_state.selected_character_indices) <= 4:
+                    if start_button_rect and start_button_rect.collidepoint(mouse_pos) and 1 <= len(game_state.selected_character_indices) <= 4:
                         game_state.start_game()
                 elif game_state.current_phase == AKTIONSPHASE:
-                    for i, rect in enumerate(interactive_rects.get('portrait_rects', [])):
+                    for i, rect in enumerate(portrait_rects):
                         if rect.collidepoint(mouse_pos):
                             game_state.active_character = game_state.players[i]
-                            game_state.selected_card_index = None # Deselect card on player switch
+                            game_state.selected_card_index = None
                             game_state.selected_card_obj = None
-                    for i, rect in enumerate(interactive_rects.get('card_rects', [])):
+                    for i, rect in enumerate(card_rects):
                         if rect.collidepoint(mouse_pos): game_state.select_card(i, game_state.active_character)
                     if game_state.selected_card_obj:
-                        if interactive_rects.get('task_rects', {}).get('challenge').collidepoint(mouse_pos):
+                        # KORREKTUR: Greift auf das task_rects Dictionary zu, das von draw_tasks zurückgegeben wird
+                        if task_rects["challenge"].collidepoint(mouse_pos):
                             game_state.assign_selected_card_to_task("challenge", game_state.active_character)
-                        elif interactive_rects.get('task_rects', {}).get('duty').collidepoint(mouse_pos):
+                        elif task_rects["duty"].collidepoint(mouse_pos):
                             game_state.assign_selected_card_to_task("duty", game_state.active_character)
-                    if interactive_rects.get('ready_button') and interactive_rects['ready_button'].collidepoint(mouse_pos):
+                    if ready_button_rect and ready_button_rect.collidepoint(mouse_pos):
                         game_state.active_character.is_ready = not game_state.active_character.is_ready
                 elif game_state.current_phase == GAME_OVER:
-                    if interactive_rects.get('new_mission_button') and interactive_rects['new_mission_button'].collidepoint(mouse_pos):
+                    new_mission_button, exit_button = draw_game_over_screen(screen, game_state) # Neu zeichnen für rects
+                    if new_mission_button.collidepoint(mouse_pos):
                         game_state = GameState() # Reset the game
-                    if interactive_rects.get('exit_button') and interactive_rects['exit_button'].collidepoint(mouse_pos):
+                    if exit_button.collidepoint(mouse_pos):
                         pygame.quit(); sys.exit()
         
         if game_state.current_phase == AKTIONSPHASE and game_state.check_if_all_players_ready():
@@ -192,19 +231,27 @@ def main():
         screen.fill(COLOR_BACKGROUND)
         if game_state.current_phase == SETUP_SCREEN:
             char_rects, start_button_rect = draw_setup_screen(screen, game_state.selected_character_indices)
-            interactive_rects = {'char_rects': char_rects, 'start_button': start_button_rect}
         elif game_state.current_phase == GAME_OVER:
-            new_mission_button, exit_button = draw_game_over_screen(screen, game_state)
-            interactive_rects = {'new_mission_button': new_mission_button, 'exit_button': exit_button}
+            draw_game_over_screen(screen, game_state)
         else:
             draw_travel_map(screen, game_state.mission_progress)
             portrait_rects = draw_status_bar(screen, game_state)
             task_rects = draw_tasks(screen, game_state)
             card_rects, ready_button_rect = draw_player_hand_and_ready_button(screen, game_state.active_character, game_state)
-            interactive_rects = {'portrait_rects': portrait_rects, 'task_rects': list(task_rects.values()), 'card_rects': card_rects, 'ready_button': ready_button_rect}
             if resolution_anim: resolution_anim.draw(screen)
 
-        is_over_interactive = any(rect.collidepoint(mouse_pos) for group in interactive_rects.values() if group for rect in (group if isinstance(group, list) else [group]))
+        # Build list of all interactive rects for cursor change
+        all_interactive_rects = []
+        if game_state.current_phase == SETUP_SCREEN:
+            all_interactive_rects.extend(char_rects)
+            all_interactive_rects.append(start_button_rect)
+        elif game_state.current_phase == AKTIONSPHASE:
+            all_interactive_rects.extend(portrait_rects)
+            all_interactive_rects.extend(task_rects.values())
+            all_interactive_rects.extend(card_rects)
+            all_interactive_rects.append(ready_button_rect)
+
+        is_over_interactive = any(rect and rect.collidepoint(mouse_pos) for rect in all_interactive_rects)
         pygame.mouse.set_cursor(pygame.SYSTEM_CURSOR_HAND if is_over_interactive else pygame.SYSTEM_CURSOR_ARROW)
         
         pygame.display.flip()
