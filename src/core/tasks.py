@@ -1,33 +1,23 @@
 # ==============================================================================
 # src/core/tasks.py
-# REFACTORING: 'CrisisCard' wurde zu 'ChallengeCard' umbenannt.
+# Umgebaut für das Energie-Management-System. Symbol-Anforderungen
+# entfernt, Zielwerte für Schub/Navigation hinzugefügt. DutyTask entfernt.
 # ==============================================================================
-from typing import Dict, List
-
 class Task:
-    """Base class for any challenge with symbol requirements."""
-    def __init__(self, name: str, requirements: Dict[str, int]):
+    """Base class for any challenge."""
+    def __init__(self, name: str):
         self.name = name
-        self.requirements = requirements
+
     def __repr__(self):
-        return f"{self.__class__.__name__}({self.name}, req: {self.requirements})"
+        return f"{self.__class__.__name__}({self.name})"
 
 class ChallengeCard(Task):
-    """Represents a challenge event. Requirements scale with player count."""
+    """Represents a challenge event with thrust and navigation targets."""
     def __init__(self, name: str, description: str, reward: str, penalty: str,
-                 req_1_2_players: Dict[str, int], req_3_4_players: Dict[str, int],
-                 player_count: int = 4):
-        requirements = req_1_2_players if player_count <= 2 else req_3_4_players
-        super().__init__(name, requirements)
+                 target_thrust: int, target_navigation: int):
+        super().__init__(name)
         self.description = description
         self.reward = reward
         self.penalty = penalty
-
-class DutyTask(Task):
-    """Represents a recurring duty task for a specific game phase."""
-    def __init__(self, name: str, penalty_escalation: List[str],
-                 req_1_2_players: Dict[str, int], req_3_4_players: Dict[str, int],
-                 player_count: int = 4):
-        requirements = req_1_2_players if player_count <= 2 else req_3_4_players
-        super().__init__(name, requirements)
-        self.penalty_escalation = penalty_escalation
+        self.target_thrust = target_thrust
+        self.target_navigation = target_navigation
