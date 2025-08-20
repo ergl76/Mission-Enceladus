@@ -1,7 +1,6 @@
 # ==============================================================================
 # src/core/tasks.py
-# Umgebaut für das Energie-Management-System. Symbol-Anforderungen
-# entfernt, Zielwerte für Schub/Navigation hinzugefügt. DutyTask entfernt.
+# Umgebaut für das Energie-Management-System.
 # ==============================================================================
 class Task:
     """Base class for any challenge."""

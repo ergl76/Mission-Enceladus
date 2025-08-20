@@ -1,7 +1,6 @@
 # ==============================================================================
 # src/core/player.py
-# Umgebaut für das Energie-Management-System. Handkarten entfernt,
-# Spezialisierung hinzugefügt.
+# Bereinigt: Alle kartenbezogenen Attribute und Methoden wurden entfernt.
 # ==============================================================================
 class Player:
     """Represents a player with a specific specialization."""
