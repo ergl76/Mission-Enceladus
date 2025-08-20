@@ -1,6 +1,6 @@
 # ==============================================================================
 # src/game/game_state.py
-# Stark erweitert: Setup-Phase, Game-Over, Spieler-Rotation, etc.
+# Stark erweitert: Hot-Seat-Logik, Statistik-Tracking.
 # ==============================================================================
 import random
 from typing import List, Optional, Tuple, Dict, Set
@@ -29,23 +29,31 @@ class GameState:
 
     def start_game(self):
         """Initializes all game variables after character selection."""
+        # Stats
+        self.round_counter = 1
+        self.challenges_completed_counter = 0
+
+        # Resources & Progress
         self.fuel = 10
         self.oxygen = 10
         self.integrity = 10
         self.mission_progress = 0
         
+        # Decks & Piles
         self.action_deck = create_initial_action_deck()
         self.challenge_deck = create_challenge_deck_phase1(len(self.selected_character_indices))
         self.discard_pile = Deck([])
         
+        # Players & Controls
         self.players = [Player(f"Spieler {i+1}") for i in sorted(list(self.selected_character_indices))]
+        start_player_index = random.randint(0, len(self.players) - 1)
+        self.active_character = self.players[start_player_index]
         
-        # Determine random start player
-        self.active_player_index = random.randint(0, len(self.players) - 1)
-        
+        # Round State
         self.current_challenge: Optional[ChallengeCard] = None
         self.current_duty_task: Optional[DutyTask] = None
         
+        # Interaction & Assignment State
         self.selected_card_index: Optional[int] = None
         self.selected_card_obj: Optional[ActionCard] = None
         self.assigned_to_challenge: List[ActionCard] = []
@@ -58,6 +66,8 @@ class GameState:
 
     def setup_new_round(self):
         self.current_phase = LAGEBESPRECHUNG
+        print(f"\n--- RUNDE {self.round_counter}: LAGEBESPRECHUNG ---")
+        
         self.current_challenge = self.challenge_deck.draw()
         self.current_duty_task = DutyTask(
             name="System-Check", penalty_escalation=[],
@@ -65,7 +75,12 @@ class GameState:
             req_3_4_players={constants.LIFE_SUPPORT: 2, constants.RESEARCH: 2},
             player_count=len(self.players)
         )
+        # Reset ready status for all players
+        for player in self.players:
+            player.is_ready = False
+            
         self.current_phase = AKTIONSPHASE
+        print("--- PHASE: AKTIONSPHASE ---")
 
     def select_card(self, card_index: int, player: Player):
         if self.current_phase != AKTIONSPHASE: return
@@ -82,9 +97,16 @@ class GameState:
         self.selected_card_index = None
         self.selected_card_obj = None
 
+    def check_if_all_players_ready(self) -> bool:
+        """Checks if all active players have marked themselves as ready."""
+        if not self.players:
+            return False
+        return all(p.is_ready for p in self.players)
+
     def start_resolution_phase(self):
         if self.current_phase != AKTIONSPHASE: return
         self.current_phase = AUFLOESUNGSPHASE
+        print("--- PHASE: AUFLÖSUNGSPHASE ---")
 
     def resolve_tasks(self) -> Tuple[bool, bool, Dict[str, int], Dict[str, int]]:
         def count_symbols(cards: List[ActionCard]) -> Dict[str, int]:
@@ -109,8 +131,9 @@ class GameState:
     def apply_consequences(self, duty_success: bool, challenge_success: bool):
         if not duty_success: self.integrity -= 2
         if self.current_challenge:
-            if challenge_success and "Fortschritt" in self.current_challenge.reward:
-                self.mission_progress += 1
+            if challenge_success:
+                if "Fortschritt" in self.current_challenge.reward: self.mission_progress += 1
+                self.challenges_completed_counter += 1
             elif not challenge_success:
                 if "Integrität" in self.current_challenge.penalty: self.integrity -= 1
                 if "Treibstoff" in self.current_challenge.penalty: self.fuel -= 1
@@ -129,5 +152,11 @@ class GameState:
         for player in self.players_who_contributed:
             player.draw_hand(self.action_deck)
         self.players_who_contributed.clear()
-        self.active_player_index = (self.active_player_index + 1) % len(self.players)
+        
+        # Rotate start player (for next round's first turn)
+        current_idx = self.players.index(self.active_character)
+        next_idx = (current_idx + 1) % len(self.players)
+        self.active_character = self.players[next_idx]
+        
+        self.round_counter += 1
         self.setup_new_round()

@@ -1,10 +1,9 @@
 # ==============================================================================
 # src/core/player.py
-# Hinzugefügt: name im Konstruktor für einfachere Identifizierung
+# Hinzugefügt: 'is_ready' Attribut für das Ready-Check-System.
 # ==============================================================================
 from typing import List
 from src.core.deck import Deck
-# KORREKTUR: Der Schrägstrich wurde durch einen Punkt ersetzt.
 from src.core.cards import ActionCard
 
 class Player:
@@ -12,6 +11,7 @@ class Player:
     def __init__(self, name: str):
         self.name = name
         self.hand: List[ActionCard] = []
+        self.is_ready: bool = False # Neu für Ready-Check-System
 
     def draw_hand(self, deck: Deck, num_cards: int = 4):
         """Draws cards from the deck to fill the player's hand up to num_cards."""
