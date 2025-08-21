@@ -1,6 +1,6 @@
 # ==============================================================================
 # src/game/game_state.py
-# KORRIGIERT: 'air_pressure' zu 'airpressure' umbenannt, um Fehler zu vermeiden.
+# KORRIGIERT: Schub und Navigation werden nach einer Herausforderung nicht mehr zurückgesetzt.
 # ==============================================================================
 import random
 from typing import List, Optional, Set
@@ -44,7 +44,7 @@ class GameState:
         self.oxygen = 6
         self.water = 6
         self.temperature = 6
-        self.airpressure = 6 # Umbenannt von air_pressure
+        self.airpressure = 6
         self.thrust = 0
         self.navigation = 0
         self.energy_pool = 0
@@ -59,7 +59,7 @@ class GameState:
         self.oxygen = max(0, self.oxygen - 2)
         self.water = max(0, self.water - 2)
         self.temperature = max(0, self.temperature - 2)
-        self.airpressure = max(0, self.airpressure - 2) # Umbenannt
+        self.airpressure = max(0, self.airpressure - 2)
         if self.check_for_defeat(): return
         
         self.current_phase = ENERGIEPHASE
@@ -110,8 +110,7 @@ class GameState:
             else:
                 print("Herausforderung GESCHEITERT!")
         
-        self.thrust = 0
-        self.navigation = 0
+        # KORREKTUR: Schub und Navigation werden NICHT mehr zurückgesetzt.
         self.current_challenge = None
 
     def prepare_next_round(self):
