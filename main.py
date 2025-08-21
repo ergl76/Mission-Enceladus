@@ -68,11 +68,11 @@ def draw_game_over_screen(surface, game_state: GameState) -> Tuple[pygame.Rect, 
     draw_text(surface, "Mission beenden", exit_rect.center, center=True)
     return new_mission_rect, exit_rect
     
-def draw_cockpit(surface, game_state: GameState) -> Dict[str, List[pygame.Rect]]:
-    interactive_elements = defaultdict(list)
+def draw_cockpit(surface, game_state: GameState) -> List[Tuple[pygame.Rect, str, int]]:
+    interactive_elements = []
     cockpit_rect = pygame.Rect(LEFT_PANEL_WIDTH, 0, CENTER_PANEL_WIDTH, SCREEN_HEIGHT)
     
-    systems = {"oxygen": "Sauerstoff", "water": "Wasser", "temperature": "Temperatur", "air_pressure": "Luftdruck"}
+    systems = {"oxygen": "Sauerstoff", "water": "Wasser", "temperature": "Temperatur", "airpressure": "Luftdruck"}
     for i, (sys_key, sys_name) in enumerate(systems.items()):
         x_pos = cockpit_rect.x + 30 + (i * (CENTER_PANEL_WIDTH / 4))
         draw_text(surface, sys_name, (x_pos, 50))
@@ -87,8 +87,8 @@ def draw_cockpit(surface, game_state: GameState) -> Dict[str, List[pygame.Rect]]
         pygame.draw.rect(surface, COLOR_RED, minus_rect)
         draw_text(surface, "+", plus_rect.center, center=True)
         draw_text(surface, "-", minus_rect.center, center=True)
-        interactive_elements[f"{sys_key}_plus"].append(plus_rect)
-        interactive_elements[f"{sys_key}_minus"].append(minus_rect)
+        interactive_elements.append((plus_rect, sys_key, 1))
+        interactive_elements.append((minus_rect, sys_key, -1))
         
     nav_systems = {"thrust": "Schub", "navigation": "Navigation"}
     for i, (sys_key, sys_name) in enumerate(nav_systems.items()):
@@ -104,8 +104,8 @@ def draw_cockpit(surface, game_state: GameState) -> Dict[str, List[pygame.Rect]]
         pygame.draw.rect(surface, COLOR_RED, minus_rect)
         draw_text(surface, "+", plus_rect.center, center=True)
         draw_text(surface, "-", minus_rect.center, center=True)
-        interactive_elements[f"{sys_key}_plus"].append(plus_rect)
-        interactive_elements[f"{sys_key}_minus"].append(minus_rect)
+        interactive_elements.append((plus_rect, sys_key, 1))
+        interactive_elements.append((minus_rect, sys_key, -1))
         
     draw_text(surface, f"Energie: {game_state.energy_pool}", (cockpit_rect.centerx, 650), center=True, f=big_font)
     
@@ -127,7 +127,7 @@ def draw_zone3_crew_control(surface, game_state: GameState) -> Dict:
         is_active = player == game_state.active_character
         pygame.draw.rect(surface, COLOR_GREY, rect, border_radius=5)
         if is_active: pygame.draw.rect(surface, COLOR_YELLOW, rect, 4, border_radius=5)
-        draw_text(surface, f"{player.name} ({player.specialization[:4]})", rect.center, center=True, f=small_font)
+        draw_text(surface, f"{player.name}", rect.center, center=True, f=small_font)
         if player.is_ready: draw_text(surface, "✓", rect.topright + pygame.Vector2(-15, 5), color=COLOR_GREEN, f=big_font)
         ready_rect = pygame.Rect(crew_rect.x + 20, y_pos + 90, crew_rect.width - 40, 40)
         ready_button_rects.append(ready_rect)
@@ -158,10 +158,8 @@ def main():
                         if rect.collidepoint(mouse_pos): game_state.active_character = game_state.players[i]
                     for i, rect in enumerate(interactive_rects.get('ready_button_rects', [])):
                         if rect.collidepoint(mouse_pos): game_state.players[i].is_ready = not game_state.players[i].is_ready
-                    for key, rect_list in interactive_rects.get('cockpit_buttons', {}).items():
-                        if rect_list[0].collidepoint(mouse_pos):
-                            system, change = key.split('_')
-                            amount = 1 if change == 'plus' else -1
+                    for rect, system, amount in interactive_rects.get('cockpit_buttons', []):
+                        if rect.collidepoint(mouse_pos):
                             game_state.modify_system_value(system, amount)
                 elif game_state.current_phase == GAME_OVER:
                     new_mission_button, exit_button = interactive_rects.get('new_mission_button'), interactive_rects.get('exit_button')

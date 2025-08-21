@@ -31,9 +31,13 @@ class GameState:
         
         self.challenge_deck = create_challenge_deck_phase1(len(self.selected_character_indices))
         
-        specializations = ["Sauerstoff", "Wasser", "Temperatur", "Luftdruck"]
+        specializations = ["oxygen", "water", "temperature", "airpressure"]
+        char_names = ["Sauerstoff", "Wasser", "Temperatur", "Luftdruck"]
+
         selected_specs = [specializations[i] for i in sorted(list(self.selected_character_indices))]
-        self.players = [Player(f"Spieler {i+1}", spec) for i, spec in enumerate(selected_specs)]
+        selected_names = [char_names[i] for i in sorted(list(self.selected_character_indices))]
+        
+        self.players = [Player(name, spec) for name, spec in zip(selected_names, selected_specs)]
         
         start_player_index = random.randint(0, len(self.players) - 1)
         self.active_character = self.players[start_player_index]
@@ -41,7 +45,7 @@ class GameState:
         self.oxygen = 6
         self.water = 6
         self.temperature = 6
-        self.air_pressure = 6
+        self.airpressure = 6 # KORREKTUR: Umbenannt, um Unterstrich zu vermeiden
         self.thrust = 0
         self.navigation = 0
         self.energy_pool = 0
@@ -56,7 +60,7 @@ class GameState:
         self.oxygen = max(0, self.oxygen - 2)
         self.water = max(0, self.water - 2)
         self.temperature = max(0, self.temperature - 2)
-        self.air_pressure = max(0, self.air_pressure - 2)
+        self.airpressure = max(0, self.airpressure - 2)
         if self.check_for_defeat(): return
         
         self.current_phase = ENERGIEPHASE
@@ -76,7 +80,7 @@ class GameState:
     def modify_system_value(self, system: str, amount: int):
         cost = 1 
         
-        if amount > 0 and self.active_character.specialization.lower() == system:
+        if amount > 0 and self.active_character.specialization == system:
             if self.energy_pool >= cost:
                 setattr(self, system, min(6, getattr(self, system) + 2))
                 self.energy_pool -= cost
@@ -90,7 +94,7 @@ class GameState:
                     self.energy_pool -= cost
         
     def check_for_defeat(self) -> bool:
-        if self.oxygen <= 0 or self.water <= 0 or self.temperature <= 0 or self.air_pressure <= 0:
+        if self.oxygen <= 0 or self.water <= 0 or self.temperature <= 0 or self.airpressure <= 0:
             self.current_phase = GAME_OVER
             return True
         return False
@@ -106,7 +110,7 @@ class GameState:
         
         self.thrust = 0
         self.navigation = 0
-        self.current_challenge = None # Challenge is resolved for the round
+        self.current_challenge = None
 
     def prepare_next_round(self):
         if self.current_phase != VORBEREITUNGSPHASE: return
