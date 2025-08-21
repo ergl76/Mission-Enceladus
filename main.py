@@ -1,6 +1,6 @@
 # ==============================================================================
 # main.py
-# Vollständig bereinigt und auf das Energie-Management-System umgestellt.
+# KORRIGIERT: Behebt NameError und ValueError. Stellt volle Funktionalität wieder her.
 # ==============================================================================
 import pygame
 import sys
@@ -115,6 +115,20 @@ def draw_cockpit(surface, game_state: GameState) -> List[Tuple[pygame.Rect, str,
         draw_text(surface, f"Ziel: Schub {challenge.target_thrust} | Navigation {challenge.target_navigation}", (cockpit_rect.centerx, 540), center=True)
     return interactive_elements
 
+def draw_zone1_travel_map(surface, progress: int, total_steps: int = 10):
+    map_rect = pygame.Rect(0, 0, LEFT_PANEL_WIDTH, SCREEN_HEIGHT)
+    pygame.draw.rect(surface, COLOR_PANEL_BG, map_rect)
+    start_pos_y = map_rect.height - 50
+    end_pos_y = 50
+    draw_text(surface, "🌍", (map_rect.centerx, start_pos_y), f=big_font, center=True)
+    draw_text(surface, "🪐", (map_rect.centerx, end_pos_y), f=big_font, center=True)
+    path_height = start_pos_y - end_pos_y
+    for i in range(1, total_steps):
+        y = start_pos_y - (i * path_height / total_steps)
+        pygame.draw.line(surface, COLOR_GREY, (map_rect.centerx - 10, y), (map_rect.centerx + 10, y), 2)
+    rocket_y = start_pos_y - (progress * path_height / total_steps)
+    draw_text(surface, "🚀", (map_rect.centerx, rocket_y), f=big_font, center=True)
+    
 def draw_zone3_crew_control(surface, game_state: GameState) -> Dict:
     crew_rect = pygame.Rect(LEFT_PANEL_WIDTH + CENTER_PANEL_WIDTH, 0, RIGHT_PANEL_WIDTH, SCREEN_HEIGHT)
     pygame.draw.rect(surface, COLOR_PANEL_BG, crew_rect)
@@ -163,17 +177,13 @@ def main():
                             game_state.modify_system_value(system, amount)
                 elif game_state.current_phase == GAME_OVER:
                     new_mission_button, exit_button = interactive_rects.get('new_mission_button'), interactive_rects.get('exit_button')
-                    if new_mission_button and new_mission_button.collidepoint(mouse_pos):
-                        game_state = GameState()
-                    if exit_button and exit_button.collidepoint(mouse_pos):
-                        pygame.quit(); sys.exit()
+                    if new_mission_button and new_mission_button.collidepoint(mouse_pos): game_state = GameState()
+                    if exit_button and exit_button.collidepoint(mouse_pos): pygame.quit(); sys.exit()
 
         if game_state.current_phase == AKTIONSPHASE and game_state.players and all(p.is_ready for p in game_state.players):
             game_state.current_phase = AUFLOESUNGSPHASE
             game_state.resolve_challenge()
-            if game_state.check_for_defeat():
-                game_state.current_phase = GAME_OVER
-            else:
+            if not game_state.check_for_defeat():
                 game_state.current_phase = VORBEREITUNGSPHASE
                 game_state.prepare_next_round()
 
@@ -185,7 +195,7 @@ def main():
             new_mission_button, exit_button = draw_game_over_screen(screen, game_state)
             interactive_rects = {'new_mission_button': new_mission_button, 'exit_button': exit_button}
         else:
-            # draw_zone1_travel_map ist nicht definiert, Platzhalter
+            draw_zone1_travel_map(screen, game_state.mission_progress)
             cockpit_buttons = draw_cockpit(screen, game_state)
             crew_controls = draw_zone3_crew_control(screen, game_state)
             interactive_rects = {**crew_controls, 'cockpit_buttons': cockpit_buttons}

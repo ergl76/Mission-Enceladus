@@ -1,6 +1,6 @@
 # ==============================================================================
 # src/game/game_state.py
-# Vollständig überarbeitet für das Energie-Management-System.
+# KORRIGIERT: 'air_pressure' zu 'airpressure' umbenannt, um Fehler zu vermeiden.
 # ==============================================================================
 import random
 from typing import List, Optional, Set
@@ -29,14 +29,13 @@ class GameState:
         self.challenges_completed_counter = 0
         self.mission_progress = 0
         
-        self.challenge_deck = create_challenge_deck_phase1(len(self.selected_character_indices))
+        self.challenge_deck = create_challenge_deck_phase1()
         
         specializations = ["oxygen", "water", "temperature", "airpressure"]
         char_names = ["Sauerstoff", "Wasser", "Temperatur", "Luftdruck"]
-
+        
         selected_specs = [specializations[i] for i in sorted(list(self.selected_character_indices))]
         selected_names = [char_names[i] for i in sorted(list(self.selected_character_indices))]
-        
         self.players = [Player(name, spec) for name, spec in zip(selected_names, selected_specs)]
         
         start_player_index = random.randint(0, len(self.players) - 1)
@@ -45,7 +44,7 @@ class GameState:
         self.oxygen = 6
         self.water = 6
         self.temperature = 6
-        self.airpressure = 6 # KORREKTUR: Umbenannt, um Unterstrich zu vermeiden
+        self.airpressure = 6 # Umbenannt von air_pressure
         self.thrust = 0
         self.navigation = 0
         self.energy_pool = 0
@@ -60,7 +59,7 @@ class GameState:
         self.oxygen = max(0, self.oxygen - 2)
         self.water = max(0, self.water - 2)
         self.temperature = max(0, self.temperature - 2)
-        self.airpressure = max(0, self.airpressure - 2)
+        self.airpressure = max(0, self.airpressure - 2) # Umbenannt
         if self.check_for_defeat(): return
         
         self.current_phase = ENERGIEPHASE
@@ -93,9 +92,12 @@ class GameState:
                     setattr(self, system, new_value)
                     self.energy_pool -= cost
         
+        self.check_for_defeat()
+        
     def check_for_defeat(self) -> bool:
         if self.oxygen <= 0 or self.water <= 0 or self.temperature <= 0 or self.airpressure <= 0:
             self.current_phase = GAME_OVER
+            print("NIEDERLAGE: Ein Lebenserhaltungssystem ist kollabiert.")
             return True
         return False
 
